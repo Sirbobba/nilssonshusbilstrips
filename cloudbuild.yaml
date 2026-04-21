@@ -1,0 +1,27 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - '--tag'
+      - 'europe-north1-docker.pkg.dev/nilssons-husbilslogg/husbilslogg-repo/husbilslogg-app:v10'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyByQbDX_Kq0lhnSMRLsyPbeQZP2I-i3EEc'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=nilssons-husbilslogg.firebaseapp.com'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_PROJECT_ID=nilssons-husbilslogg'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=nilssons-husbilslogg.firebasestorage.app'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=462064355144'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_FIREBASE_APP_ID=1:462064355144:web:184791c660249f67ab957d'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_THUNDERFOREST_API_KEY=e7583822a658454eaf12418e57962f25'
+      - '.'
+
+images:
+  - 'europe-north1-docker.pkg.dev/nilssons-husbilslogg/husbilslogg-repo/husbilslogg-app:v10'
+
+options:
+  machineType: 'E2_HIGHCPU_8'

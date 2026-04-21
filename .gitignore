@@ -34,3 +34,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# agent logs and plans
+*.md
+!README.md
+error.txt
+*.code-workspace
