@@ -30,6 +30,25 @@ En intelligent och visuell loggbok för husbilsäventyr. Byggd för att fungera 
    ```
 4. Kör dev-servern: `npm run dev`
 
+## 🚀 Publicera (Google Cloud Run)
+
+För att skicka upp en ny version av appen:
+
+1. Bygg och skicka till Google Cloud Build:
+   ```bash
+   gcloud builds submit --config cloudbuild.yaml
+   ```
+2. Deploya den nya versionen till Cloud Run:
+   ```bash
+   gcloud run deploy husbilslogg-app --image europe-north1-docker.pkg.dev/nilssons-husbilslogg/husbilslogg-repo/husbilslogg-app:v11 --region europe-north1
+   ```
+
+## 🗺️ Kommande funktioner (Roadmap)
+
+- **📊 Export:** Möjlighet att exportera hela loggboken till CSV, JSON eller KML (för Google Earth).
+- **🔍 Avancerad filtrering:** Sök och filtrera historiken baserat på datum, plats-typ eller fritext.
+- **📈 Statistik:** Se hur många mil ni kört och hur många nätter ni tillbringat på olika typer av platser.
+
 ## 📂 Struktur
 
 - `/src/components/Map.tsx` - Huvudkomponenten för kartan och incheckningslogiken.

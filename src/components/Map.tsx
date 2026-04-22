@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { addDoc, collection, onSnapshot, serverTimestamp, updateDoc, doc, deleteDoc } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { addDoc, collection, serverTimestamp, updateDoc, doc, onSnapshot } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { useAutoLogger, Suggestion } from "@/hooks/useAutoLogger";
 import SuggestionPanel from "./SuggestionPanel";
@@ -119,6 +119,7 @@ interface LogEntry {
   avresa:    string;
   notes:     string;
   photos:    string[];
+  albumUrl?: string;
 }
 
 interface UnifiedSpot {
@@ -126,7 +127,7 @@ interface UnifiedSpot {
   lat: number;
   lon: number;
   name: string;
-  type: "camp_site" | "caravan_site" | "nature_reserve";
+  type: "camp_site" | "caravan_site" | "nature_reserve" | "wild_camping";
   category?: string;
   website?: string;
   description?: string;
@@ -216,8 +217,6 @@ function CheckInModal({
         const storageRef = ref(storage, `photos/${fileName}`);
         
         console.log(`AutoLogger: Startar uppladdning till Firebase: ${fileName}`);
-        // Vi använder uploadBytes för enkelhetens skull här
-        const { uploadBytes } = await import("firebase/storage");
         const uploadResult = await uploadBytes(storageRef, compressed);
         const url = await getDownloadURL(uploadResult.ref);
         

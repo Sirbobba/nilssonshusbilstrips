@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp, orderBy, limit } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
 // Helper for distance
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -32,7 +30,6 @@ export interface Suggestion {
 export function useAutoLogger() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const lastPosRef = useRef<{ lat: number; lon: number; time: number } | null>(null);
-  const activeLogIdRef = useRef<string | null>(null);
   const lastFetchRef = useRef<number>(0);
   
   // Load suggestions from localStorage on mount
