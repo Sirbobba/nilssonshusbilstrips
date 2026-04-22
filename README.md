@@ -1,70 +1,40 @@
 # 🚐 Nilssons Husbilslogg
 
-En modern och premium reseplattform för att logga husbilsäventyr, hitta gömda pärlor och bevara minnen från vägen. Designad för att kännas som en native app (PWA) med fokus på användarvänlighet och visuell elegans.
+En intelligent och visuell loggbok för husbilsäventyr. Byggd för att fungera sömlöst på mobilen under resans gång.
 
-![Husbilslogg Preview](public/husbil.jpg)
+## ✨ Nyckelfunktioner
 
-## ✨ Egenskaper
+- **🗺️ Interaktiv Karta:** Visar campingar, ställplatser, gästhamnar och naturreservat via OpenStreetMap och Overpass API.
+- **⏰ Smart Auto-Logger:** Känner automatiskt av när ni stannat på en plats i mer än 20 minuter och föreslår en incheckning (inklusive "Fricamping"-läge).
+- **📸 Bilduppladdning:** Ladda upp foton direkt från kameran. Inkluderar smart klient-komprimering för att spara lagringsutrymme i molnet.
+- **🔗 Google Photos-stöd:** Länka hela album (perfekt för 360-bilder och systemkamerafoton).
+- **🚙 Waze-integration:** Starta navigering till valfri plats med ett enda klick direkt till Waze.
+- **📱 PWA-redo:** Installera som en app på hemskärmen för en snabb och ren upplevelse utan adressfält.
 
-- **📍 Interaktiv Kartupptäckt**: Utforska campingar, ställplatser och naturreservat via realtidsdata från OpenStreetMap (Overpass API).
-- **✅ Smart Incheckning**: Logga besök med datum, anteckningar och framtida bilduppladdning. Visas med gröna ✓-ikoner direkt på kartan.
-- **📱 Native-känsla (PWA)**: Installera som app på iOS och Android. Fullt stöd för "Safe Areas" (notch), offline-caching och mobiloptimerade touch-ytor.
-- **🎨 Premium UI**: Modern estetik med Glassmorphism, mjuka gradienter och fullt stöd för mörkt läge (Dark Mode).
-- **⚡ Realtidssynk**: All data lagras och synkas i realtid via Firebase Firestore.
-- **🔐 Säker Inloggning**: Enkel och säker inloggning via Firebase Magic Links.
-- **🗺️ Dynamiska Kartstilar**: Växla mellan Outdoor, Landscape, Cykelkartor eller mjuka Stadia-stilar.
+## 🛠️ Teknikstack
 
-## 🚀 Teknikstack
+- **Frontend:** Next.js 14, React, Leaflet (Karta), Lucide Icons.
+- **Backend:** Firebase Firestore (Logg-data), Firebase Storage (Bilder).
+- **API:** Overpass API (Kartdata i realtid).
+- **Stil:** Vanilla CSS med modern "Glassmorphism" design.
 
-- **Framework**: [Next.js 14](https://nextjs.org/) (App Router)
-- **Språk**: [TypeScript](https://www.typescriptlang.org/)
-- **Styling**: Vanilla CSS (Modern CSS Variables & Glassmorphism)
-- **Karta**: [React-Leaflet](https://react-leaflet.js.org/) med [Thunderforest](https://www.thunderforest.com/) & [Stadia Maps](https://stadiamaps.com/)
-- **Backend**: [Firebase](https://firebase.google.com/) (Auth, Firestore)
-- **Deployment**: [Docker](https://www.docker.com/) & [Google Cloud Build](https://cloud.google.com/build)
+## 🚀 Kom igång lokalt
 
-## 🛠️ Kom igång lokalt
-
-1. **Klona repot**:
-   ```bash
-   git clone https://github.com/Sirbobba/nilssonshusbilstrips.git
-   cd nilssonshusbilstrips
-   ```
-
-2. **Installera beroenden**:
-   ```bash
-   npm install
-   ```
-
-3. **Konfigurera miljövariabler**:
-   Skapa en `.env.local` fil baserad på dina Firebase och kart-API-nycklar:
+1. Klona repot.
+2. Installera beroenden: `npm install`
+3. Skapa en `.env.local` med dina Firebase-uppgifter:
    ```env
-   NEXT_PUBLIC_FIREBASE_API_KEY=your_key
-   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_domain
-   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-   NEXT_PUBLIC_THUNDERFOREST_API_KEY=your_key
+   NEXT_PUBLIC_FIREBASE_API_KEY=...
+   NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
    ```
+4. Kör dev-servern: `npm run dev`
 
-4. **Kör dev-servern**:
-   ```bash
-   npm run dev
-   ```
+## 📂 Struktur
 
-5. **Öppna appen**:
-   Gå till [http://localhost:3000](http://localhost:3000).
-
-## 🐳 Deployment & Docker
-
-Projektet är förberett för Google Cloud Run via Docker.
-
-**Bygg lokalt:**
-```bash
-docker build -t nilssonshusbilstrips .
-```
-
-**Cloud Build:**
-Använd den medföljande `cloudbuild.yaml` för att automatisera deployment till Google Cloud.
+- `/src/components/Map.tsx` - Huvudkomponenten för kartan och incheckningslogiken.
+- `/src/hooks/useAutoLogger.ts` - Den intelligenta platsdetekteringen.
+- `/src/lib/firebase.ts` - Konfiguration för databas och lagring.
 
 ---
-
-*Skapad med ❤️ för Nilssons husbilsresor.*
+*Skapad med ❤️ för Nilssons äventyr på vägarna.*
