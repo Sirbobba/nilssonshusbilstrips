@@ -11,49 +11,38 @@ const demoWaypoints = [
 export default function Home() {
   return (
     <main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      {/* Header Panel overlapping the map */}
       <div
         className="glass-panel"
         style={{
           position: "absolute",
-          top: "max(16px, var(--safe-top))",
-          left: "16px",
-          right: "16px",
-          zIndex: 10,
-          padding: "20px",
-          borderRadius: "var(--border-radius-lg)",
+          top: "max(12px, var(--safe-top))",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 1000,
+          padding: "6px",
+          borderRadius: "40px",
           display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center"
+          alignItems: "center",
+          gap: "12px",
+          border: "1px solid rgba(255,255,255,0.15)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+          minWidth: "120px"
         }}
       >
-        <div>
-          <h1 style={{ fontSize: "24px", fontWeight: "700" }}>Husbilslogg</h1>
-          <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
-            Rollis äventyr
-          </p>
+        <div style={{
+          width: "44px",
+          height: "44px",
+          borderRadius: "50%",
+          overflow: "hidden",
+          border: "2px solid var(--accent-color)",
+          background: "#fff",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
+        }}>
+          <img src="/husbil.jpg" style={{ width: "100%", height: "100%", objectFit: "contain" }} alt="Husbilslogg" />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-          <Link
-            href="/ny-logg"
-            style={{ 
-              textDecoration: "none",
-              background: "var(--accent-color)",
-              color: "white",
-              width: "48px",
-              height: "48px",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "24px",
-              fontWeight: "bold",
-              boxShadow: "0 4px 12px rgba(52, 199, 89, 0.3)",
-            }}
-          >
-            +
-          </Link>
-          <div style={{ fontSize: "36px" }}>🚐</div>
+        <div style={{ paddingRight: "16px" }}>
+          <h1 style={{ fontSize: "16px", fontWeight: "800", letterSpacing: "-0.2px", color: "#fff" }}>Husbilslogg</h1>
+          <p style={{ color: "var(--text-secondary)", fontSize: "11px", marginTop: "-2px" }}>Rollis äventyr</p>
         </div>
       </div>
 
@@ -65,15 +54,15 @@ export default function Home() {
           waypoints={demoWaypoints}
         />
 
-        {/* Graident fade at the bottom to transition smoothly to edge */}
+        {/* Subtil gradient fade i botten för att rama in knapparna */}
         <div
           style={{
             position: "absolute",
             bottom: 0,
             left: 0,
             right: 0,
-            height: "150px",
-            background: "linear-gradient(to top, var(--bg-color) 0%, transparent 100%)",
+            height: "180px",
+            background: "linear-gradient(to top, rgba(17, 24, 39, 0.8) 0%, rgba(17, 24, 39, 0.4) 40%, transparent 100%)",
             pointerEvents: "none",
             zIndex: 2
           }}

@@ -1,13 +1,19 @@
 {
   "hosting": {
-    "source": ".",
+    "public": "public",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
-    "frameworksBackend": {
-      "region": "us-central1"
-    }
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "husbilslogg-app",
+          "region": "europe-north1"
+        }
+      }
+    ]
   }
 }

@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { addDoc, collection, serverTimestamp, updateDoc, doc, onSnapshot } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+import { addDoc, collection, serverTimestamp, updateDoc, doc, onSnapshot, deleteDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { db, storage, auth } from "@/lib/firebase";
 import { useAutoLogger, Suggestion } from "@/hooks/useAutoLogger";
 import SuggestionPanel from "./SuggestionPanel";
-import { Bell } from "lucide-react";
+import LogbookPanel from "./LogbookPanel";
+import { Bell, Book, Navigation, Bike, Map as MapIcon, Route, Undo, Save, XCircle } from "lucide-react";
 
 // ─── Leaflet icon fix ────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,6 +35,10 @@ const campIcon    = emojiIcon("⛺", 30);
 const caravanIcon = emojiIcon("🚐", 30);
 const marinaIcon  = emojiIcon("⛵", 30);
 const natureIcon  = emojiIcon("🌲", 28);
+const homeIcon    = emojiIcon("🏠", 30);
+
+const HOME_COORDS: [number, number] = [59.039651440986866, 17.323552148319067];
+
 const meIcon = L.divIcon({
   html: `
     <style>
@@ -67,24 +72,35 @@ const meIcon = L.divIcon({
   popupAnchor:[0, -40],
 });
 
-// Besökt-ikoner med grön bock-badge
-function emojiIconVisited(emoji: string, size = 30) {
+// Besökt-ikoner med "Golden Edition"-look och orange badge
+function emojiIconVisited(emoji: string, size = 34) {
   return L.divIcon({
     html: `
-      <div style="position:relative;display:inline-block;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))">
-        <div style="font-size:${size}px;line-height:1">${emoji}</div>
-        <div style="position:absolute;top:-5px;right:-6px;background:#34c759;border-radius:50%;width:14px;height:14px;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:900;line-height:1">✓</div>
+      <div style="position:relative;display:inline-block;filter:drop-shadow(0 4px 10px rgba(0,0,0,0.6))">
+        <div style="
+          font-size:${size}px; line-height:1;
+          filter: sepia(100%) saturate(500%) brightness(1) hue-rotate(5deg);
+        ">${emoji}</div>
+        <div style="
+          position:absolute; top:-10px; right:-12px; 
+          background:#FF9500; border-radius:50%; 
+          width:22px; height:22px; border:2.5px solid #fff; 
+          display:flex; align-items:center; justify-content:center; 
+          font-size:13px; color:#fff; font-weight:900; line-height:1;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+          z-index: 10;
+        ">✓</div>
       </div>`,
     className: "",
-    iconSize: [size + 8, size + 8],
-    iconAnchor: [(size + 8) / 2, size + 8],
-    popupAnchor: [0, -(size + 8)],
+    iconSize: [size + 15, size + 15],
+    iconAnchor: [(size + 15) / 2, size + 15],
+    popupAnchor: [0, -(size + 15)],
   });
 }
-const visitedCampIcon    = emojiIconVisited("⛺",  30);
-const visitedCaravanIcon = emojiIconVisited("🚐", 30);
-const visitedMarinaIcon  = emojiIconVisited("⛵", 30);
-const visitedNatureIcon  = emojiIconVisited("🌲", 28);
+const visitedCampIcon    = emojiIconVisited("⛺",  40);
+const visitedCaravanIcon = emojiIconVisited("🚐", 34);
+const visitedMarinaIcon  = emojiIconVisited("⛵", 36);
+const visitedNatureIcon  = emojiIconVisited("🌲", 36);
 
 // ─── Thunderforest tile styles ────────────────────────────────────────────────
 const TF_KEY = process.env.NEXT_PUBLIC_THUNDERFOREST_API_KEY;
@@ -92,14 +108,10 @@ const TF_KEY = process.env.NEXT_PUBLIC_THUNDERFOREST_API_KEY;
 type MapStyle = { id: string; label: string; url: string; group: string };
 
 const MAP_STYLES: MapStyle[] = [
-  { id: "outdoors",        label: "🚗 Utomhus",         url: `https://api.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey=${TF_KEY}`,   group: "Thunderforest" },
-  { id: "cycle",           label: "🚴 Cykel",            url: `https://api.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=${TF_KEY}`,      group: "Thunderforest" },
-  { id: "landscape",       label: "🗺️ Landskap",         url: `https://api.thunderforest.com/landscape/{z}/{x}/{y}.png?apikey=${TF_KEY}`,  group: "Thunderforest" },
-  { id: "atlas",           label: "📍 Atlas",            url: `https://api.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=${TF_KEY}`,      group: "Thunderforest" },
-  { id: "stadia-smooth",   label: "☀️ Ljus (Stadia)",   url: "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png",         group: "Stadia" },
-  { id: "stadia-dark",     label: "🌙 Mörk (Stadia)",   url: "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png",    group: "Stadia" },
-  { id: "stadia-outdoors", label: "🏕️ Natur (Stadia)",  url: "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}.png",              group: "Stadia" },
-  { id: "stadia-terrain",  label: "⛰️ Terräng (Stadia)",url: "https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}.png",        group: "Stadia" },
+  { id: "outdoors",        label: "🚗 Utomhus",         url: `https://api.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey=${TF_KEY}`,   group: "Kartor" },
+  { id: "cycle",           label: "🚴 Cykel",            url: `https://api.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=${TF_KEY}`,      group: "Kartor" },
+  { id: "landscape",       label: "🗺️ Landskap",         url: `https://api.thunderforest.com/landscape/{z}/{x}/{y}.png?apikey=${TF_KEY}`,  group: "Kartor" },
+  { id: "atlas",           label: "📍 Atlas",            url: `https://api.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=${TF_KEY}`,      group: "Kartor" },
 ];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -111,14 +123,17 @@ export interface OsmSpot {
   type: "camp_site" | "caravan_site";
 }
 
-interface LogEntry {
-  docId:     string;
+export interface LogEntry {
+  docId?:    string;
   spotId:    string;
   spotName:  string;
   ankomst:   string;
   avresa:    string;
   notes:     string;
   photos:    string[];
+  spotType:  string;
+  lat:       number;
+  lon:       number;
   albumUrl?: string;
 }
 
@@ -150,6 +165,20 @@ function spotDisplayName(tags: Record<string, string>, type: OsmSpot["type"]) {
     ?? (type === "caravan_site" ? "Ställplats" : "Camping");
 }
 
+// ─── Audit Logger ─────────────────────────────────────────────────────────────
+async function logAudit(action: string, details: any) {
+  try {
+    await addDoc(collection(db, "audit_logs"), {
+      action,
+      details,
+      userEmail: auth.currentUser?.email || "Okänd",
+      timestamp: serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("Kunde inte spara till audit_log:", e);
+  }
+}
+
 // ─── Check-In Modal ───────────────────────────────────────────────────────────
 function CheckInModal({
   spot,
@@ -173,6 +202,8 @@ function CheckInModal({
   const [albumUrl, setAlbumUrl]   = useState("");
   const [selectedPhotos, setSelectedPhotos] = useState<{ file: File; preview: string }[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const name      = spot.name;
   const typeLabel = spot.type === "caravan_site" ? "🚐 Ställplats" : spot.type === "camp_site" ? "⛺ Camping" : spot.type === "wild_camping" ? "🏕️ Fricamping" : "🌲 Naturreservat";
@@ -236,9 +267,10 @@ function CheckInModal({
 
       if (editingId) {
         await updateDoc(doc(db, "loggs", editingId), data);
+        await logAudit("UPDATE_LOG", { logId: editingId, spotName: name });
         setEditingId(null);
       } else {
-        await addDoc(collection(db, "loggs"), {
+        const newDoc = await addDoc(collection(db, "loggs"), {
           ...data,
           spotId:    spot.id,
           spotName:  name,
@@ -248,6 +280,7 @@ function CheckInModal({
           photos:    photoUrls,
           createdAt: serverTimestamp(),
         });
+        await logAudit("CREATE_LOG", { logId: newDoc.id, spotName: name });
       }
       setSaved(true);
       setSelectedPhotos([]); // Rensa valda bilder
@@ -262,6 +295,38 @@ function CheckInModal({
     } catch (e) {
       console.error("Firestore error:", e);
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editingId) return;
+    setDeleting(true);
+    try {
+      const logToDelete = previousVisits.find(v => v.docId === editingId);
+      
+      // Radera kopplade bilder från Storage
+      if (logToDelete?.photos && logToDelete.photos.length > 0) {
+        for (const photoUrl of logToDelete.photos) {
+          try {
+            const photoRef = ref(storage, photoUrl);
+            await deleteObject(photoRef);
+          } catch (err) {
+            console.error("Kunde inte radera bild:", err);
+          }
+        }
+      }
+
+      // Radera dokumentet från Firestore
+      await deleteDoc(doc(db, "loggs", editingId));
+      await logAudit("DELETE_LOG", { logId: editingId, spotName: name });
+      
+      setDeleting(false);
+      setConfirmDelete(false);
+      setEditingId(null);
+      setTab("history");
+    } catch (e) {
+      console.error("Fel vid radering:", e);
+      setDeleting(false);
     }
   };
 
@@ -449,9 +514,42 @@ function CheckInModal({
               {saved ? "✅ Sparat!" : saving ? "Sparar…" : editingId ? "Uppdatera inlägg 📝" : "Checka in här 🏁"}
             </button>
             {editingId && (
-              <button onClick={() => { setEditingId(null); setTab("history"); }} style={{
-                width:"100%", marginTop:8, background:"transparent", border:"none", color:"rgba(255,255,255,0.5)", fontSize:13
-              }}>Avbryt redigering</button>
+              <>
+                <button onClick={() => { setEditingId(null); setConfirmDelete(false); setTab("history"); }} style={{
+                  width:"100%", marginTop:8, background:"transparent", border:"none", color:"rgba(255,255,255,0.5)", fontSize:13, cursor:"pointer"
+                }}>Avbryt redigering</button>
+                
+                <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+                  {!confirmDelete ? (
+                    <button onClick={() => setConfirmDelete(true)} style={{
+                      width:"100%", padding:"12px", borderRadius:12, border:"1px solid rgba(255,59,48,0.3)",
+                      background:"rgba(255,59,48,0.1)", color:"#ff3b30", fontSize:14, fontWeight:600, cursor:"pointer"
+                    }}>
+                      Ta bort inlägg 🗑️
+                    </button>
+                  ) : (
+                    <div style={{ background: "rgba(255,59,48,0.15)", padding: 16, borderRadius: 12, border: "1px solid rgba(255,59,48,0.4)" }}>
+                      <p style={{ color: "#fff", fontSize: 13, marginBottom: 12, textAlign: "center", fontWeight: 600 }}>
+                        ⚠️ Är du helt säker? Detta går inte att ångra.
+                      </p>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button onClick={handleDelete} disabled={deleting} style={{
+                          flex: 1, padding: "10px", borderRadius: 8, border: "none",
+                          background: "#ff3b30", color: "#fff", fontWeight: 700, cursor: deleting ? "default" : "pointer"
+                        }}>
+                          {deleting ? "Raderar..." : "Ja, radera"}
+                        </button>
+                        <button onClick={() => setConfirmDelete(false)} disabled={deleting} style={{
+                          flex: 1, padding: "10px", borderRadius: 8, border: "none",
+                          background: "rgba(255,255,255,0.1)", color: "#fff", fontWeight: 600, cursor: deleting ? "default" : "pointer"
+                        }}>
+                          Avbryt
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </>)}
 
@@ -862,31 +960,92 @@ function ToggleBtn({ active, onClick, label }: { active: boolean; onClick: () =>
 }
 
 // ─── Huvud-komponent ──────────────────────────────────────────────────────────
+function MapController({ setMap }: { setMap: (m: L.Map) => void }) {
+  const map = useMap();
+  useEffect(() => { setMap(map); }, [map, setMap]);
+  return null;
+}
+
 export default function Map({ center = [57.70887, 11.97456], zoom = 6, waypoints = [] }: MapProps = {} as MapProps) {
+  const [mapRef, setMapRef] = useState<L.Map | null>(null);
+  const [isTracking, setIsTracking] = useState(false);
+  const [bikePath, setBikePath] = useState<[number, number][]>([]);
+  const [watchId, setWatchId] = useState<number | null>(null);
   const [activeStyle,  setActiveStyle]  = useState(MAP_STYLES[0]);
-  const [showCamping,  setShowCamping]  = useState(false);
-  const [showCaravan,  setShowCaravan]  = useState(false);
+  const [showCamping,  setShowCamping]  = useState(true);
+  const [showCaravan,  setShowCaravan]  = useState(true);
   const [showMarina,   setShowMarina]   = useState(false);
   const [showNatur,    setShowNatur]    = useState(false);
   const [checkinSpot,  setCheckinSpot]  = useState<UnifiedSpot | null>(null);
   const [initialDate,   setInitialDate]  = useState<string | undefined>(undefined);
   const [visitedSpots, setVisitedSpots] = useState<Record<string, LogEntry[]>>({});
+  const [allLogs, setAllLogs] = useState<LogEntry[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showLayerPanel, setShowLayerPanel] = useState(false);
+  const [showLogbook, setShowLogbook] = useState(false);
+  const [allBikeRoutes, setAllBikeRoutes] = useState<any[]>([]);
+  const [plannedBikeRoutes, setPlannedBikeRoutes] = useState<any[]>([]);
+
+  // Cykel Rutt Planerare States
+  const [isPlanningRoute, setIsPlanningRoute] = useState(false);
+  const [plannedPath, setPlannedPath] = useState<[number, number][]>([]);
+  const [plannedWaypoints, setPlannedWaypoints] = useState<[number, number][]>([]);
+  const [isRouting, setIsRouting] = useState(false);
+  const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
+  const [useRoadSnapping, setUseRoadSnapping] = useState(true);
+
+  const getPlannedDistance = () => {
+    let total = 0;
+    for (let i = 0; i < plannedPath.length - 1; i++) {
+      const [lat1, lon1] = plannedPath[i];
+      const [lat2, lon2] = plannedPath[i+1];
+      const R = 6371; // km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+      total += R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+    }
+    return total;
+  };
 
   const { suggestions, removeSuggestion } = useAutoLogger();
 
-  // Realtidslyssnare på Firestore — bygg upp visitedSpots index
+  // Realtidslyssnare på Firestore
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "loggs"), (snap) => {
+    const unsubLoggs = onSnapshot(collection(db, "loggs"), (snap) => {
       const idx: Record<string, LogEntry[]> = {};
+      const flat: LogEntry[] = [];
       snap.docs.forEach(doc => {
         const d = { ...doc.data(), docId: doc.id } as LogEntry;
         if (!idx[d.spotId]) idx[d.spotId] = [];
         idx[d.spotId].push(d);
+        flat.push(d);
       });
       setVisitedSpots(idx);
+      setAllLogs(flat);
     });
-    return () => unsub();
+
+    const unsubBike = onSnapshot(collection(db, "bike_routes"), (snap) => {
+      setAllBikeRoutes(snap.docs.map(d => {
+        const data = d.data();
+        let coords = data.coordinates;
+        try { if (typeof coords === 'string') coords = JSON.parse(coords); } catch(e){}
+        return { id: d.id, ...data, coordinates: coords };
+      }));
+    });
+
+    const unsubPlannedBike = onSnapshot(collection(db, "planned_bike_routes"), (snap) => {
+      setPlannedBikeRoutes(snap.docs.map(d => {
+        const data = d.data();
+        let coords = data.coordinates;
+        let wps = data.waypoints;
+        try { if (typeof coords === 'string') coords = JSON.parse(coords); } catch(e){}
+        try { if (typeof wps === 'string') wps = JSON.parse(wps); } catch(e){}
+        return { id: d.id, ...data, coordinates: coords, waypoints: wps };
+      }));
+    });
+
+    return () => { unsubLoggs(); unsubBike(); unsubPlannedBike(); };
   }, []);
 
   const handleAcceptSuggestion = (s: Suggestion) => {
@@ -901,6 +1060,186 @@ export default function Map({ center = [57.70887, 11.97456], zoom = 6, waypoints
     setCheckinSpot(unified);
     removeSuggestion(s.id);
     setShowSuggestions(false);
+  };
+
+  const handleLocateMe = () => {
+    if (mapRef) {
+      mapRef.locate({ setView: true, maxZoom: 16 });
+    }
+  };
+
+  const toggleBikeTracker = () => {
+    if (!navigator.geolocation) {
+      alert("GPS stöds inte av denna enhet.");
+      return;
+    }
+
+    if (isTracking) {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      setIsTracking(false);
+      setWatchId(null);
+      
+      if (bikePath.length > 0) {
+        if (window.confirm("Cykeltur stoppad! Vill du spara spåret i databasen?")) {
+           addDoc(collection(db, "bike_routes"), {
+             date: new Date().toISOString(),
+             coordinates: JSON.stringify(bikePath),
+             userEmail: auth.currentUser?.email || "Okänd",
+             spotName: checkinSpot?.name || "Okänd plats"
+           })
+           .then(() => alert("Sparat! 🚴‍♂️✅"))
+           .catch(console.error);
+        }
+      }
+      setBikePath([]);
+      setActiveStyle(MAP_STYLES[0]);
+    } else {
+      setBikePath([]);
+      const cycleStyle = MAP_STYLES.find(s => s.id === "cycle") || MAP_STYLES[1];
+      setActiveStyle(cycleStyle);
+      setIsTracking(true);
+      
+      const id = navigator.geolocation.watchPosition(
+        pos => {
+          setBikePath(prev => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            if (typeof lat !== 'number' || typeof lon !== 'number' || Number.isNaN(lat) || Number.isNaN(lon)) {
+              return prev;
+            }
+
+            // Filtrera bort brus: Lägg bara till punkten om vi rört oss mer än 5 meter
+            if (prev.length > 0) {
+              const [lastLat, lastLon] = prev[prev.length - 1];
+              const R = 6371e3;
+              const dLat = (lat - lastLat) * Math.PI / 180;
+              const dLon = (lon - lastLon) * Math.PI / 180;
+              const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                        Math.cos(lastLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *
+                        Math.sin(dLon/2) * Math.sin(dLon/2);
+              const dist = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+              
+              if (dist < 5) return prev; // Hoppa över om vi står stilla
+            }
+
+            // Centrera kartan mjukt på användaren (i en try-catch för att undvika background-crashes)
+            try {
+              if (mapRef) mapRef.setView([lat, lon]);
+            } catch (e) {}
+
+            const newPos: [number, number] = [lat, lon];
+            return [...prev, newPos];
+          });
+        },
+        err => console.error("GPS error:", err),
+        { enableHighAccuracy: true, maximumAge: 0 }
+      );
+      setWatchId(id);
+    }
+  };
+
+  const recalculateRoute = async (wps: [number, number][]) => {
+    setPlannedWaypoints(wps);
+    if (wps.length < 2) {
+      setPlannedPath(wps);
+      return;
+    }
+    setIsRouting(true);
+    try {
+      let newPath: [number, number][] = [wps[0]];
+      for (let i = 1; i < wps.length; i++) {
+        const p1 = wps[i-1];
+        const p2 = wps[i];
+        const res = await fetch(`https://router.project-osrm.org/route/v1/bicycle/${p1[1]},${p1[0]};${p2[1]},${p2[0]}?overview=full&geometries=geojson`);
+        const data = await res.json();
+        if (data.routes && data.routes.length > 0) {
+          const routeCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
+          newPath = [...newPath, ...routeCoords];
+        } else {
+          newPath.push(p2);
+        }
+      }
+      setPlannedPath(newPath);
+    } catch (e) {
+      console.error(e);
+      setPlannedPath(wps);
+    }
+    setIsRouting(false);
+  };
+
+  const handleMapClick = async (lat: number, lon: number) => {
+    if (isPlanningRoute) {
+      if (plannedWaypoints.length === 0) {
+        setPlannedWaypoints([[lat, lon]]);
+        setPlannedPath([[lat, lon]]);
+        return;
+      }
+      if (!useRoadSnapping) {
+        setPlannedPath(prev => [...prev, [lat, lon]]);
+        setPlannedWaypoints(prev => [...prev, [lat, lon]]);
+        return;
+      }
+      setIsRouting(true);
+      const lastPoint = plannedWaypoints[plannedWaypoints.length - 1];
+      try {
+        const res = await fetch(`https://router.project-osrm.org/route/v1/bicycle/${lastPoint[1]},${lastPoint[0]};${lon},${lat}?overview=full&geometries=geojson`);
+        const data = await res.json();
+        if (data.routes && data.routes.length > 0) {
+          const routeCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
+          setPlannedPath(prev => [...prev, ...routeCoords]);
+          setPlannedWaypoints(prev => [...prev, [lat, lon]]);
+        } else {
+          setPlannedPath(prev => [...prev, [lat, lon]]);
+          setPlannedWaypoints(prev => [...prev, [lat, lon]]);
+        }
+      } catch (e) {
+        console.error("OSRM error:", e);
+        setPlannedPath(prev => [...prev, [lat, lon]]);
+        setPlannedWaypoints(prev => [...prev, [lat, lon]]);
+      }
+      setIsRouting(false);
+    } else {
+      setCheckinSpot({
+        id: `custom_${Date.now()}`,
+        lat,
+        lon,
+        name: "Plats på kartan",
+        type: "wild_camping"
+      });
+    }
+  };
+
+  const savePlannedRoute = async () => {
+    const name = window.prompt("Namnge din cykelrutt:");
+    if (!name) return;
+    try {
+      const payload = {
+        name,
+        date: new Date().toISOString(),
+        coordinates: JSON.stringify(plannedPath),
+        waypoints: JSON.stringify(plannedWaypoints),
+        userEmail: auth.currentUser?.email || "Okänd"
+      };
+
+      if (editingRouteId) {
+        const overwrite = window.confirm("Vill du spara över den befintliga rutten? Klicka Avbryt för att spara som en NY kopia.");
+        if (overwrite) {
+          await updateDoc(doc(db, "planned_bike_routes", editingRouteId), payload);
+        } else {
+          await addDoc(collection(db, "planned_bike_routes"), payload);
+        }
+      } else {
+        await addDoc(collection(db, "planned_bike_routes"), payload);
+      }
+      alert("Planerad rutt sparad! 🗺️✅");
+      setIsPlanningRoute(false);
+      setPlannedPath([]);
+      setPlannedWaypoints([]);
+      setEditingRouteId(null);
+    } catch (e) {
+      console.error(e);
+      alert("Fel vid sparande.");
+    }
   };
 
   return (
@@ -938,61 +1277,270 @@ export default function Map({ center = [57.70887, 11.97456], zoom = 6, waypoints
         />
       )}
 
-      {/* ── Karttyps- & lagerväljare ── */}
-      <div style={{
-        position: "absolute", bottom: "32px", right: "16px", zIndex: 1000,
-        display: "flex", flexDirection: "column", gap: "6px",
-        maxHeight: "calc(100% - 160px)", overflowY: "auto",
-        paddingRight: "4px", scrollbarWidth: "none",
-      }}>
-        <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", textAlign: "center", paddingBottom: "2px", letterSpacing: "0.05em" }}>Lager</div>
-        <ToggleBtn active={showCamping} onClick={() => setShowCamping(v => !v)} label="⛺ Campingar" />
-        <ToggleBtn active={showCaravan} onClick={() => setShowCaravan(v => !v)} label="🚐 Ställplatser" />
-        <ToggleBtn active={showMarina}  onClick={() => setShowMarina(v => !v)}  label="⛵ Gästhamnar" />
-        <ToggleBtn active={showNatur}   onClick={() => setShowNatur(v => !v)}   label="🌲 Naturreservat" />
-
-        {["Thunderforest", "Stadia"].map((group, gi) => (
-          <div key={group}>
-            <div style={{
-              borderTop: gi > 0 ? "1px solid rgba(255,255,255,0.15)" : undefined,
-              fontSize: "10px", color: "rgba(255,255,255,0.4)",
-              textAlign: "center", padding: "4px 0 2px", letterSpacing: "0.05em",
-            }}>{group}</div>
-            {MAP_STYLES.filter(s => s.group === group).map(style => (
-              <button key={style.id} onClick={() => setActiveStyle(style)} style={{
-                display: "block", width: "100%", padding: "10px 18px",
-                borderRadius: "24px", border: "none", cursor: "pointer",
-                fontSize: "14px", fontWeight: 600, whiteSpace: "nowrap",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.4)", marginBottom: "6px",
-                background: activeStyle.id === style.id ? "var(--accent-color, #34c759)" : "rgba(30,30,40,0.85)",
-                color: activeStyle.id === style.id ? "#fff" : "rgba(255,255,255,0.8)",
-                backdropFilter: "blur(12px)", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                minHeight: "44px",
-              }}>{style.label}</button>
-            ))}
+      {/* ── Verktygsmeny för Ruttplanerare ── */}
+      {isPlanningRoute && (
+        <div style={{
+          position: "absolute", bottom: "32px", left: "50%", transform: "translateX(-50%)", zIndex: 1005,
+          background: "rgba(30,30,40,0.95)", padding: "12px 24px", borderRadius: "32px",
+          display: "flex", gap: "12px", alignItems: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)",
+          flexWrap: "wrap", justifyContent: "center"
+        }}>
+          <div style={{ color: "#fff", fontWeight: 700, fontSize: "14px", marginRight: "8px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <span>{isRouting ? "Beräknar..." : `${plannedWaypoints.length} pkt`}</span>
+            {!isRouting && plannedPath.length > 1 && (
+              <span style={{ fontSize: "11px", color: "var(--accent-color)" }}>{getPlannedDistance().toFixed(1)} km</span>
+            )}
           </div>
-        ))}
+          <button 
+            onClick={() => setUseRoadSnapping(!useRoadSnapping)}
+            style={{ background: "transparent", border: "1px solid " + (useRoadSnapping ? "var(--accent-color)" : "rgba(255,255,255,0.2)"), color: useRoadSnapping ? "var(--accent-color)" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", padding: "4px 10px", borderRadius: "16px", transition: "all 0.2s" }}
+          >
+            {useRoadSnapping ? "🛣️ Följ väg" : "📏 Rak linje"}
+          </button>
+          <button 
+            onClick={() => {
+              if (plannedWaypoints.length > 0) {
+                setPlannedWaypoints(prev => prev.slice(0, -1));
+                // We should also recalculate the path, but simply removing the last segment is complex without storing segments.
+                // For now, clearing the path and recalculating is better, or just rely on the user.
+                // To keep it simple, if they undo, we re-run routing from scratch or just clear path and recalculate next time.
+                // Actually, let's just clear path and rebuild it from remaining waypoints.
+                recalculateRoute(plannedWaypoints.slice(0, -1));
+              }
+            }}
+            disabled={plannedWaypoints.length === 0}
+            style={{ background: "transparent", border: "none", color: "#fff", cursor: plannedWaypoints.length === 0 ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", opacity: plannedWaypoints.length === 0 ? 0.5 : 1 }}
+          >
+            <Undo size={16} /> Ångra
+          </button>
+          <button 
+            onClick={() => {
+              setPlannedPath([]); setPlannedWaypoints([]);
+            }}
+            style={{ background: "transparent", border: "none", color: "var(--danger-color)", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "13px" }}
+          >
+            <XCircle size={16} /> Rensa
+          </button>
+          <button 
+            onClick={savePlannedRoute}
+            disabled={plannedWaypoints.length < 2}
+            style={{ 
+              background: plannedWaypoints.length < 2 ? "rgba(255,255,255,0.1)" : "var(--accent-color)", 
+              border: "none", color: "#fff", cursor: plannedWaypoints.length < 2 ? "not-allowed" : "pointer", 
+              display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", padding: "6px 12px", borderRadius: "16px", fontWeight: 700
+            }}
+          >
+            <Save size={16} /> Spara
+          </button>
+          <button 
+            onClick={() => { setIsPlanningRoute(false); setPlannedPath([]); setPlannedWaypoints([]); setEditingRouteId(null); }}
+            style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", cursor: "pointer", padding: "6px 12px", borderRadius: "16px", fontSize: "13px" }}
+          >
+            Avbryt
+          </button>
+        </div>
+      )}
+
+      {/* ── FAB & Lager-kontroller (Nere till höger) ── */}
+      <div style={{ 
+        position: "absolute", bottom: "85px", right: "24px", zIndex: 1001, 
+        display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" 
+      }}>
+
+        {/* Dölj Spår Button (bara synlig när man kikar på en gammal rutt) */}
+        {!isTracking && bikePath.length > 0 && (
+          <button 
+            onClick={() => setBikePath([])}
+            style={{
+              width: "48px", height: "48px", borderRadius: "50%",
+              background: "var(--danger-color, #ff3b30)", border: "none", color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.3)", backdropFilter: "blur(8px)",
+              cursor: "pointer", transition: "all 0.2s"
+            }}
+            title="Dölj cykelspår"
+          >
+            <div style={{width: 14, height: 14, background: "#fff", borderRadius: 3}} />
+          </button>
+        )}
+        
+        {/* Ruttplanerare Button */}
+        {!isTracking && (
+          <button 
+            onClick={() => {
+              setIsPlanningRoute(!isPlanningRoute);
+              setPlannedPath([]); setPlannedWaypoints([]);
+            }}
+            style={{
+              width: "48px", height: "48px", borderRadius: "50%",
+              background: isPlanningRoute ? "var(--accent-color)" : "rgba(30,30,40,0.85)", 
+              border: "none", color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.3)", backdropFilter: "blur(8px)",
+              cursor: "pointer", transition: "all 0.2s"
+            }}
+            title="Planera Cykelrutt"
+          >
+            <Route size={20} />
+          </button>
+        )}
+
+        {/* Bike Tracker Button */}
+        <button 
+          onClick={toggleBikeTracker}
+          style={{
+            width: "48px", height: "48px", borderRadius: "50%",
+            background: isTracking ? "var(--danger-color, #ff3b30)" : "rgba(30,30,40,0.85)", 
+            border: isTracking ? "2px solid #fff" : "none", color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)", backdropFilter: "blur(8px)",
+            cursor: "pointer", transition: "all 0.2s"
+          }}
+          title={isTracking ? "Stoppa cykel-tracker" : "Starta cykel-tracker"}
+        >
+          {isTracking ? <div style={{width: 14, height: 14, background: "#fff", borderRadius: 3}} /> : <Bike size={20} />}
+        </button>
+
+        {/* Locate Me Button */}
+        <button 
+          onClick={handleLocateMe}
+          style={{
+            width: "48px", height: "48px", borderRadius: "50%",
+            background: "rgba(30,30,40,0.85)", border: "none", color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)", backdropFilter: "blur(8px)",
+            cursor: "pointer", transition: "all 0.2s"
+          }}
+          title="Centrera på min position"
+        >
+          <Navigation size={20} />
+        </button>
+
+        {/* Logbook Button */}
+        <button 
+          onClick={() => setShowLogbook(true)}
+          style={{
+            width: "56px", height: "56px", borderRadius: "50%",
+            background: "rgba(30,30,40,0.85)", border: "none", color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.4)", backdropFilter: "blur(12px)",
+            cursor: "pointer", transition: "all 0.3s"
+          }}
+          title="Öppna loggboken"
+        >
+          <Book size={22} />
+        </button>
+
+        {/* Layer Toggle Button */}
+        <button 
+          onClick={() => setShowLayerPanel(!showLayerPanel)}
+          style={{
+            width: "56px", height: "56px", borderRadius: "50%",
+            background: showLayerPanel ? "var(--accent-color)" : "rgba(30,30,40,0.85)", 
+            border: "none", color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.4)", backdropFilter: "blur(12px)",
+            cursor: "pointer", transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          }}
+          title="Lager & filter"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+        </button>
+
+        {/* The FAB (+) */}
+        <div className="fab-container">
+          <button 
+            onClick={() => {
+              setCheckinSpot({
+                id: `manual_${Date.now()}`,
+                lat: center[0],
+                lon: center[1],
+                name: "Manuell logg",
+                type: "wild_camping"
+              });
+            }}
+            style={{
+              width: "56px", height: "56px", borderRadius: "50%",
+              background: "var(--accent-color)", border: "none", color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "28px", fontWeight: "300",
+              boxShadow: "0 8px 25px rgba(52, 199, 89, 0.4)",
+              cursor: "pointer", transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+            }}
+            className="fab-main"
+          >
+            +
+          </button>
+          <div className="fab-tooltip">Ny logg</div>
+        </div>
       </div>
+
+      {/* ── Lager-panel (Google Maps style) ── */}
+      {showLayerPanel && (
+        <div 
+          onClick={() => setShowLayerPanel(false)}
+          style={{ position: "absolute", inset: 0, zIndex: 1002, background: "rgba(0,0,0,0.3)" }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: "absolute", bottom: "160px", right: "24px",
+              width: "280px", background: "linear-gradient(160deg, #1c1f2e, #111827)",
+              borderRadius: "24px", padding: "20px",
+              border: "1px solid rgba(255,255,255,0.15)",
+              boxShadow: "0 15px 50px rgba(0,0,0,0.6)",
+              animation: "slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+            }}
+          >
+            <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff", marginBottom: "16px", display: "flex", justifyContent: "space-between" }}>
+              Lager & filter
+              <button onClick={() => setShowLayerPanel(false)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>Visa på kartan</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <LayerToggle active={showCamping} onClick={() => setShowCamping(!showCamping)} label="⛺ Camping" />
+                <LayerToggle active={showCaravan} onClick={() => setShowCaravan(!showCaravan)} label="🚐 Ställplats" />
+                <LayerToggle active={showMarina}  onClick={() => setShowMarina(!showMarina)}  label="⛵ Hamn" />
+                <LayerToggle active={showNatur}   onClick={() => setShowNatur(!showNatur)}   label="🌲 Natur" />
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>Karttyp</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                {MAP_STYLES.map(style => (
+                  <button key={style.id} onClick={() => setActiveStyle(style)} style={{
+                    padding: "10px", borderRadius: "12px", border: "none", cursor: "pointer",
+                    fontSize: "12px", fontWeight: "600", textAlign: "left",
+                    background: activeStyle.id === style.id ? "rgba(52, 199, 89, 0.2)" : "rgba(255,255,255,0.05)",
+                    border: activeStyle.id === style.id ? "1px solid var(--accent-color)" : "1px solid transparent",
+                    color: activeStyle.id === style.id ? "var(--accent-color)" : "#fff",
+                    transition: "all 0.2s"
+                  }}>
+                    {style.label.split(" ")[1] || style.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Karta ── */}
       <MapContainer center={center} zoom={zoom} zoomControl={false}
         style={{ height: "100%", width: "100%", zIndex: 0 }}>
+        <MapController setMap={setMapRef} />
         <ChangeView center={center} zoom={zoom} />
         <TileLayer
           key={activeStyle.id}
-          attribution='&copy; <a href="https://www.thunderforest.com">Thunderforest</a> / <a href="https://stadiamaps.com">Stadia</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          attribution='&copy; <a href="https://www.thunderforest.com">Thunderforest</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url={activeStyle.url}
         />
         <LocationMarker />
-        <MapEvents onMapClick={(lat, lon) => {
-          setCheckinSpot({
-            id: `custom_${Date.now()}`,
-            lat,
-            lon,
-            name: "Plats på kartan",
-            type: "wild_camping"
-          });
-        }} />
+        <MapEvents onMapClick={handleMapClick} />
         <CampingLayer 
           showCamping={showCamping} 
           showCaravan={showCaravan} 
@@ -1010,7 +1558,83 @@ export default function Map({ center = [57.70887, 11.97456], zoom = 6, waypoints
             </Marker>
           );
         })}
+
+        {/* ── Cykelspår (Polyline) ── */}
+        {bikePath.length > 1 && (
+          <Polyline positions={bikePath} color="#3b82f6" weight={5} opacity={0.8} dashArray="10, 10" />
+        )}
+
+        {/* ── Planerad Rutt (Polyline) ── */}
+        {plannedPath.length > 1 && (
+          <Polyline positions={plannedPath} color="#a855f7" weight={5} opacity={0.9} />
+        )}
+        {plannedWaypoints.map((wp, i) => (
+          <Marker 
+            key={i} 
+            position={wp}
+            eventHandlers={{
+              click: () => {
+                const newWps = plannedWaypoints.filter((_, index) => index !== i);
+                recalculateRoute(newWps);
+              }
+            }}
+          >
+            <Popup>Punkt {i + 1}<br/><small>(Klicka igen för att radera)</small></Popup>
+          </Marker>
+        ))}
+
+        {/* ── Hemma ── */}
+        <Marker 
+          position={HOME_COORDS} 
+          icon={homeIcon}
+          eventHandlers={{
+            click: () => {
+              if (isPlanningRoute) handleMapClick(HOME_COORDS[0], HOME_COORDS[1]);
+            }
+          }}
+        >
+          <Popup>Hemma (Gnesta)</Popup>
+        </Marker>
       </MapContainer>
+
+      {/* ── Loggbok Panel ── */}
+      {showLogbook && (
+        <LogbookPanel 
+          logs={allLogs}
+          bikeRoutes={allBikeRoutes}
+          plannedBikeRoutes={plannedBikeRoutes}
+          onClose={() => setShowLogbook(false)}
+          onSelectEntry={(entry) => {
+            setCheckinSpot({
+              id: entry.spotId,
+              lat: entry.lat,
+              lon: entry.lon,
+              name: entry.spotName,
+              type: entry.type as any,
+            });
+            setShowLogbook(false);
+          }}
+          onSelectBikeRoute={(route) => {
+            setBikePath(route.coordinates);
+            const cycleStyle = MAP_STYLES.find(s => s.id === "cycle") || MAP_STYLES[1];
+            setActiveStyle(cycleStyle);
+            if (mapRef && route.coordinates.length > 0) {
+              mapRef.flyTo(route.coordinates[0], 15);
+            }
+            setShowLogbook(false);
+          }}
+          onEditBikeRoute={(route) => {
+            setIsPlanningRoute(true);
+            setPlannedPath(route.coordinates || []);
+            setPlannedWaypoints(route.waypoints || []);
+            setEditingRouteId(route.id);
+            setShowLogbook(false);
+            if (mapRef && route.waypoints?.length > 0) {
+              mapRef.flyTo(route.waypoints[0], 14);
+            }
+          }}
+        />
+      )}
 
       {/* ── Check-In Modal (utanför kartan) ── */}
       {checkinSpot && (
@@ -1022,5 +1646,20 @@ export default function Map({ center = [57.70887, 11.97456], zoom = 6, waypoints
         />
       )}
     </div>
+  );
+}
+
+function LayerToggle({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: "10px", borderRadius: "12px", border: "none", cursor: "pointer",
+      fontSize: "12px", fontWeight: "600", textAlign: "left",
+      background: active ? "rgba(52, 199, 89, 0.2)" : "rgba(255,255,255,0.05)",
+      border: active ? "1px solid var(--accent-color)" : "1px solid transparent",
+      color: active ? "var(--accent-color)" : "#fff",
+      transition: "all 0.2s"
+    }}>
+      {label}
+    </button>
   );
 }
